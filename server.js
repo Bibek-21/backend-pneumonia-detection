@@ -1,12 +1,15 @@
-const express =  require('express');
+const express = require('express');
 const multer = require('multer');
-// const {imread} = require('opencv4nodejs');
 const routes = require('./src/routes/index');
 const tf = require('@tensorflow/tfjs');
 const sharp = require('sharp');
-const cors = require('cors')
+const { spawn } = require('child_process');
+const cors = require('cors');
 
-app = express();
+const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // Enable CORS for all routes
 app.use(cors());
 const corsOptions = {
@@ -18,22 +21,31 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-
 // Load the model
-const model = async() => {
-  await tf.loadLayersModel('path/to/your/model.json');
-}
+const loadModel = async () => {
+  // await tf.loadLayersModel('path/to/your/model.json');
+};
 
-const upload = multer({ dest: 'uploads/' });
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+loadModel().catch((error) => {
+  console.error('Error loading model:', error);
+});
 
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + file.originalname); // Appending extension
+  },
+});
+
+const upload = multer({ storage: storage });
 
 app.use('/', routes);
 
 app.post('/process-image', upload.single('image'), async (req, res) => {
   try {
-    // Access the uploaded image file using req.
+    // Access the uploaded image file using req.file
     const imagePath = req.file.path;
 
     // Preprocess the image using Sharp.
@@ -49,37 +61,33 @@ app.post('/process-image', upload.single('image'), async (req, res) => {
   }
 });
 
-app.get('/predict', (req, res, next) => {
-    // const {file, name} = req.body
-
-    // load model 
-    // model prediction 
-    const prediction = 0.8
-    if(prediction > 0.7){
-        return res.send({data: 'Sucess', pnemonia: true})
-    }
-    res.send({data: 'predict routes', pnemonia:false})
-})
+app.get('/predict', (req, res) => {
+  const prediction = 0.8;
+  if (prediction > 0.7) {
+    return res.send({ data: 'Success', pneumonia: true });
+  }
+  res.send({ data: 'predict routes', pneumonia: false });
+});
 
 app.post('/api/predict', upload.single('image'), (req, res) => {
-    const imagePath = req.file.path;
-    
-    // Spawn a child process to run the model script
-    const pythonProcess = spawn('python', ['path/to/your/model_script.py', imagePath]);
-  
-    // Handle the output from the child process
-    pythonProcess.stdout.on('data', (data) => {
-      const result = data.toString().trim(); // Extract the result from the output
-      res.json({ result });
-    });
-  
-    // Handle any errors that occur during the process
-    pythonProcess.stderr.on('data', (err) => {
-      console.error(err.toString());
-      res.status(500).json({ error: 'An error occurred during prediction.' });
-    });
+  const imagePath = req.file.path;
+
+  // Spawn a child process to run the model script
+  const pythonProcess = spawn('python', ['path/to/your/model_script.py', imagePath]);
+
+  // Handle the output from the child process
+  pythonProcess.stdout.on('data', (data) => {
+    const result = data.toString().trim(); // Extract the result from the output
+    res.json({ result });
   });
-  
+
+  // Handle any errors that occur during the process
+  pythonProcess.stderr.on('data', (err) => {
+    console.error(err.toString());
+    res.status(500).json({ error: 'An error occurred during prediction.' });
+  });
+});
+
 app.listen(4000, () => {
-    console.log('server running at port 4000')
-})
+  console.log('Server running at port 4000');
+});
